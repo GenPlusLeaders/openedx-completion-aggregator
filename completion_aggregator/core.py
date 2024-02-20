@@ -18,6 +18,7 @@ from xblock.core import XBlock
 from xblock.plugin import PluginMissingError
 
 from django.utils import timezone
+from xmodule.modulestore.django import modulestore
 
 from . import compat
 from .cachegroup import CacheGroup
@@ -31,7 +32,7 @@ CacheEntry = namedtuple('CacheEntry', ['course_blocks', 'root_block'])
 CompletionStats = namedtuple('CompletionStats', ['earned', 'possible', 'last_modified'])
 
 log = logging.getLogger(__name__)
-
+store = modulestore()
 
 class UpdaterCache:
     """
@@ -221,8 +222,16 @@ class AggregationUpdater:
 
         Dispatches to an appropriate method given the block's completion_mode.
         """
+
         try:
-            mode = XBlockCompletionMode.get_mode(XBlock.load_class(block.block_type))
+            if block.block_type == 'sequential':
+                xblock = store.get_item(block)
+                if hasattr(xblock, 'is_completion_tracked'):
+                    mode = XBlockCompletionMode.EXCLUDED if not xblock.is_completion_tracked else XBlockCompletionMode.AGGREGATOR
+                else:
+                    mode = XBlockCompletionMode.get_mode(XBlock.load_class(block.block_type))
+            else:
+                mode = XBlockCompletionMode.get_mode(XBlock.load_class(block.block_type))
         except PluginMissingError:
             # Do not count blocks that aren't registered
             mode = XBlockCompletionMode.EXCLUDED
